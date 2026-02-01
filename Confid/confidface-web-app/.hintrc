@@ -1,0 +1,26 @@
+{
+  "extends": [
+    "development"
+  ],
+  "hints": {
+    "axe/forms": [
+      "default",
+      {
+        "label": "off"
+      }
+    ],
+    "compat-api/css": [
+      "default",
+      {
+        "ignore": [
+          "mask-image",
+          "background-color: color-mix(in srgb, oklch(92.2% 0 0) 80%, transparent)",
+          "-webkit-text-size-adjust",
+          "field-sizing",
+          "field-sizing: content"
+        ]
+      }
+    ],
+    "no-inline-styles": "off"
+  }
+}
