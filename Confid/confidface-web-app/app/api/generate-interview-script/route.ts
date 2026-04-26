@@ -2,52 +2,65 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextRequest, NextResponse } from "next/server";
 
 // Optional sanity log. Remove in production if preferred.
-console.log(process.env.GEMINI_API_KEY ? "[Gemini] KEY OK" : "[Gemini] KEY MISSING");
+console.log(
+  process.env.GEMINI_API_KEY ? "[Gemini] KEY OK" : "[Gemini] KEY MISSING",
+);
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 export async function POST(req: NextRequest) {
   try {
-    const { questions = [], conversationHistory = [], userAnswer = "", isInitial = false } = await req.json();
+    const body = await req.json();
+    const {
+      questions = [], // used for initial greeting (array of all questions)
+      currentQuestion = "", // the question the user just answered
+      userAnswer = "",
+      nextQuestion = null, // the next stored question to ask (null if last)
+      questionNumber = 0,
+      totalQuestions = 0,
+      isInitial = false,
+    } = body;
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" }, { apiVersion: "v1" });
+    const model = genAI.getGenerativeModel(
+      { model: "gemini-2.5-flash-lite" },
+      { apiVersion: "v1" },
+    );
 
     let prompt = "";
 
     if (isInitial || !userAnswer) {
-      // Initial greeting - ask first question
+      // Initial greeting only - the actual question will be appended client-side
       prompt = `
 You are a professional AI interview assistant.
 
-Greet the candidate warmly and ask them the first interview question below.
-Keep your response friendly and encouraging.
-Your response should be 1-2 sentences max.
+Generate ONLY a short warm greeting for the candidate (1 sentence max).
+Examples: "Welcome! Great to have you here today." or "Hi there, thanks for joining this interview!"
 
-First Question to Ask:
-${JSON.stringify(questions[0]?.question || "Tell me about yourself")}
-
-Respond naturally as an interviewer would.`;
-    } else {
-      // Follow-up response based on user's answer
+Do NOT ask any questions. Only output the greeting.`;
+    } else if (nextQuestion) {
+      // Feedback only - the next question will be appended client-side
       prompt = `
-You are a professional AI interview assistant conducting a technical interview.
+You are a professional AI interview assistant.
 
-The candidate just answered a question. Here's the context:
+The candidate just answered a question.
 
-Current Question: ${questions[0]?.question || ""}
-Candidate's Answer: ${userAnswer}
+Question: ${currentQuestion}
+Answer: ${userAnswer}
 
-Interview Guidelines:
-1. Provide brief, professional feedback on their answer (1 sentence)
-2. Ask the next follow-up question based on their response
-3. Be encouraging and constructive
-4. Keep responses concise (2-3 sentences max)
-5. If they gave a good answer, acknowledge it specifically
+Give brief, encouraging feedback on their answer (1 sentence only).
+Do NOT ask any questions. Only give feedback on the answer above.`;
+    } else {
+      // Last question - feedback + thank you, no questions
+      prompt = `
+You are a professional AI interview assistant.
 
-Generate a natural follow-up response that:
-- References something they said
-- Asks for clarification or deeper understanding
-- Asks the next interview question`;
+The candidate just answered the final interview question.
+
+Question: ${currentQuestion}
+Answer: ${userAnswer}
+
+Give brief encouraging feedback (1 sentence) and thank them for completing the interview.
+Do NOT ask any new questions. Keep it to 2 sentences max.`;
     }
 
     const result = await model.generateContent(prompt);
@@ -58,7 +71,7 @@ Generate a natural follow-up response that:
     console.error("[generate-interview-script] Error:", err?.message || err);
     return NextResponse.json(
       { error: "Failed to generate interview script", details: err?.message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -33,6 +33,10 @@ export const D_IDStreamingAvatar = ({
   const iceCounterRef = useRef(0);
 
   useEffect(() => {
+    let sdpSent = false;
+    const iceCandidateBuffer: any[] = [];
+    let iceCounter = 0;
+
     const initializeWebRTC = async () => {
       try {
         setLoading(true);
@@ -40,13 +44,15 @@ export const D_IDStreamingAvatar = ({
 
         console.log("🚀 Initializing WebRTC for D-ID avatar...");
 
-        // Create peer connection
-        const pc = new RTCPeerConnection({ iceServers });
+        // Create peer connection - force relay to bypass firewalls
+        const pc = new RTCPeerConnection({
+          iceServers,
+          iceTransportPolicy: "relay",
+        });
         peerConnectionRef.current = pc;
 
-        // D-ID requires explicit recvonly media sections
-        pc.addTransceiver("video", { direction: "recvonly" });
-        pc.addTransceiver("audio", { direction: "recvonly" });
+        // Do NOT add transceivers — D-ID's offer already contains
+        // audio/video/datachannel m-lines
 
         // Handle incoming tracks
         pc.ontrack = (event) => {
@@ -78,43 +84,48 @@ export const D_IDStreamingAvatar = ({
           }
         };
 
-        // Handle ICE candidates
+        // Handle ICE candidates - buffer until SDP is sent
         pc.onicecandidate = async (event) => {
-          if (event.candidate) {
-            iceCounterRef.current++;
+          if (!event.candidate) return;
+
+          const candidate = {
+            candidate: event.candidate.candidate,
+            sdpMid: event.candidate.sdpMid,
+            sdpMLineIndex: event.candidate.sdpMLineIndex,
+          };
+
+          if (!sdpSent) {
+            iceCandidateBuffer.push(candidate);
             console.log(
-              `📡 ICE candidate ${iceCounterRef.current}:`,
-              event.candidate.candidate.substring(0, 50)
+              `📦 ICE candidate buffered. Buffer: ${iceCandidateBuffer.length}`,
             );
+            return;
+          }
 
-            try {
-              // Send ICE candidate to D-ID
-              const response = await fetch("/api/d-id-stream-ice", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  streamId,
-                  sessionId,
-                  candidate: event.candidate,
-                }),
-              });
-
-              if (!response.ok) {
-                throw new Error(
-                  `ICE submission failed: ${response.statusText}`
-                );
-              }
-              console.log(
-                `✅ ICE candidate #${iceCounterRef.current} sent to D-ID`
-              );
-            } catch (err) {
-              console.error("Failed to send ICE candidate:", err);
+          iceCounter++;
+          try {
+            const response = await fetch("/api/d-id-stream-ice", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ streamId, sessionId, candidate }),
+            });
+            if (!response.ok) {
+              throw new Error(`ICE submission failed: ${response.statusText}`);
             }
+          } catch (err) {
+            console.error("Failed to send ICE candidate:", err);
           }
         };
 
         pc.onconnectionstatechange = () => {
           console.log("🔗 Connection state:", pc.connectionState);
+          if (pc.connectionState === "connected" && onStreamReady) {
+            onStreamReady();
+          }
+          if (pc.connectionState === "failed") {
+            console.error("❌ WebRTC connection FAILED - check SDP or ICE");
+            if (onError) onError("WebRTC connection failed");
+          }
         };
 
         // Set remote offer
@@ -131,25 +142,39 @@ export const D_IDStreamingAvatar = ({
         const sdpResponse = await fetch("/api/d-id-stream-sdp", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            streamId,
-            sessionId,
-            answer: answer,
-          }),
+          body: JSON.stringify({ streamId, sessionId, answer }),
         });
 
         if (!sdpResponse.ok) {
-          throw new Error(
-            `SDP submission failed: ${sdpResponse.statusText}`
-          );
+          throw new Error(`SDP submission failed: ${sdpResponse.statusText}`);
         }
 
         console.log("✅ SDP answer sent successfully");
-        setLoading(false);
 
-        if (onStreamReady) {
-          onStreamReady();
+        // Flush buffered ICE candidates
+        sdpSent = true;
+        console.log(
+          `📤 Flushing ${iceCandidateBuffer.length} buffered ICE candidates...`,
+        );
+        for (const buffered of iceCandidateBuffer) {
+          iceCounter++;
+          try {
+            await fetch("/api/d-id-stream-ice", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                streamId,
+                sessionId,
+                candidate: buffered,
+              }),
+            });
+          } catch (err) {
+            console.error("Buffered ICE candidate failed:", err);
+          }
         }
+        iceCandidateBuffer.length = 0;
+
+        setLoading(false);
       } catch (err) {
         const errorMsg =
           err instanceof Error ? err.message : "WebRTC initialization failed";

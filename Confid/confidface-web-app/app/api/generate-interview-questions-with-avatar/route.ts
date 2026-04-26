@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
           status: 429,
           result: "No free credit remaining, Try again after 24 hours",
         },
-        { status: 429 }
+        { status: 429 },
       );
     }
 
@@ -183,7 +183,7 @@ export async function POST(req: NextRequest) {
       ) {
         const redirected = resp.headers.location;
         console.log(
-          `Webhook responded ${resp.status}, redirecting POST to: ${redirected}`
+          `Webhook responded ${resp.status}, redirecting POST to: ${redirected}`,
         );
         result = await axios.post(redirected, postBody);
       } else {
@@ -199,7 +199,7 @@ export async function POST(req: NextRequest) {
     if (result?.data?.status == 429) {
       return NextResponse.json(
         { error: result?.data?.result ?? "No free credit remaining" },
-        { status: 429 }
+        { status: 429 },
       );
     }
 
@@ -211,11 +211,12 @@ export async function POST(req: NextRequest) {
       const hasInner = arr.every(
         (it) =>
           it &&
-          (Array.isArray(it.interview_questions) || Array.isArray(it.questions))
+          (Array.isArray(it.interview_questions) ||
+            Array.isArray(it.questions)),
       );
       if (hasInner) {
         return arr.flatMap(
-          (it) => it.interview_questions ?? it.questions ?? []
+          (it) => it.interview_questions ?? it.questions ?? [],
         );
       }
 
@@ -252,9 +253,32 @@ export async function POST(req: NextRequest) {
 
     console.log("Creating D-ID avatar stream with script...");
 
-    const didStreamResponse = await axios.post("/api/d-id-stream", {
-      script: avatarScript,
-    });
+    // Call D-ID API directly instead of going through local API route
+    // (server-to-server calls to own routes lack auth cookies and get blocked by middleware)
+    const apiKey = process.env.D_ID_API_KEY!;
+    const encodedKey = Buffer.from(`${apiKey}:`).toString("base64");
+
+    const didStreamResponse = await axios.post(
+      "https://api.d-id.com/talks/streams",
+      {
+        source_url:
+          "https://ik.imagekit.io/4tljpfyal/premium_photo-1690407617542-2f210cf20d7e.jpg",
+        script: {
+          type: "text",
+          input: avatarScript,
+          provider: {
+            type: "microsoft",
+            voice_id: "en-US-JennyNeural",
+          },
+        },
+      },
+      {
+        headers: {
+          Authorization: `Basic ${encodedKey}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
 
     console.log("✅ D-ID stream created:", didStreamResponse.data?.id);
 
@@ -271,17 +295,15 @@ export async function POST(req: NextRequest) {
           session_id: didStreamResponse.data?.session_id,
         },
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error: any) {
     console.error("Error in generate-interview-questions-with-avatar:", error);
     const message =
-      error?.response?.data?.error ||
-      error?.message ||
-      "Internal Server Error";
+      error?.response?.data?.error || error?.message || "Internal Server Error";
     return NextResponse.json(
       { error: message },
-      { status: error?.response?.status || 500 }
+      { status: error?.response?.status || 500 },
     );
   }
 }

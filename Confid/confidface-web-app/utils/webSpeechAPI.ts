@@ -6,12 +6,13 @@
 export const useSpeechToText = () => {
   const SpeechRecognition =
     typeof window !== "undefined"
-      ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+      ? (window as any).SpeechRecognition ||
+        (window as any).webkitSpeechRecognition
       : null;
 
   const startListening = (
     onResult: (transcript: string) => void,
-    onError: (error: string) => void
+    onError: (error: string) => void,
   ) => {
     if (!SpeechRecognition) {
       onError("Speech Recognition not supported in this browser");
@@ -22,6 +23,7 @@ export const useSpeechToText = () => {
     recognition.continuous = false;
     recognition.interimResults = false;
     recognition.lang = "en-US";
+    recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
       console.log("🎤 Listening...");
@@ -29,11 +31,13 @@ export const useSpeechToText = () => {
 
     recognition.onresult = (event: any) => {
       let transcript = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
+      for (let i = 0; i < event.results.length; i++) {
         transcript += event.results[i][0].transcript;
       }
-      console.log("✅ Transcript:", transcript);
-      onResult(transcript);
+      console.log("✅ Final transcript:", transcript);
+      if (transcript.trim()) {
+        onResult(transcript.trim());
+      }
     };
 
     recognition.onerror = (event: any) => {
@@ -82,7 +86,8 @@ export const useTextToSpeech = () => {
     if (voices.length > 0) {
       // Try to find a female voice for bot
       const femaleVoice = voices.find(
-        (voice) => voice.name.includes("Female") || voice.name.includes("female")
+        (voice) =>
+          voice.name.includes("Female") || voice.name.includes("female"),
       );
       if (femaleVoice) {
         utterance.voice = femaleVoice;

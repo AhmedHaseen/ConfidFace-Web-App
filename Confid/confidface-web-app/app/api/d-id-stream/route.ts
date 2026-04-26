@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
     if (!script) {
       return NextResponse.json(
         { error: "Missing script parameter" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
           Authorization: `Basic ${encodedKey}`,
           "Content-Type": "application/json",
         },
-      }
+      },
     );
 
     console.log("✅ D-ID Stream created:", {
@@ -57,13 +57,16 @@ export async function POST(req: NextRequest) {
       session_id: didResponse.data?.session_id,
     });
   } catch (error: any) {
-    console.error("❌ D-ID Stream creation ERROR:", error.response?.data || error.message);
+    console.error(
+      "❌ D-ID Stream creation ERROR:",
+      error.response?.data || error.message,
+    );
     return NextResponse.json(
       {
         error: "Failed to create D-ID stream",
         details: error.response?.data?.error || error.message,
       },
-      { status: error.response?.status || 500 }
+      { status: error.response?.status || 500 },
     );
   }
 }
@@ -78,7 +81,7 @@ export async function GET(req: NextRequest) {
     if (!streamId) {
       return NextResponse.json(
         { error: "Missing streamId parameter" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -93,7 +96,7 @@ export async function GET(req: NextRequest) {
           Authorization: `Basic ${auth}`,
           "Content-Type": "application/json",
         },
-      }
+      },
     );
 
     console.log("✅ Stream status retrieved:", {
@@ -106,13 +109,78 @@ export async function GET(req: NextRequest) {
       data: response.data,
     });
   } catch (error: any) {
-    console.error("❌ D-ID Stream fetch ERROR:", error.response?.data || error.message);
+    console.error(
+      "❌ D-ID Stream fetch ERROR:",
+      error.response?.data || error.message,
+    );
     return NextResponse.json(
       {
         error: "Failed to fetch stream data",
         details: error.response?.data?.error || error.message,
       },
-      { status: error.response?.status || 500 }
+      { status: error.response?.status || 500 },
+    );
+  }
+}
+
+/**
+ * Delete/cleanup a D-ID stream session
+ */
+export async function DELETE(req: NextRequest) {
+  try {
+    const { streamId, sessionId } = await req.json();
+
+    if (!streamId) {
+      return NextResponse.json(
+        { error: "Missing streamId parameter" },
+        { status: 400 },
+      );
+    }
+
+    const apiKey = process.env.D_ID_API_KEY!;
+    const auth = Buffer.from(`${apiKey}:`).toString("base64");
+
+    // Parse cookie from session_id if needed
+    let cookieHeader = sessionId || "";
+    if (cookieHeader.includes(";")) {
+      const cookies: string[] = [];
+      for (const part of cookieHeader.split(";")) {
+        const trimmed = part.trim();
+        if (
+          trimmed.includes("=") &&
+          !trimmed.includes("Expires") &&
+          !trimmed.includes("Path") &&
+          !trimmed.includes("Domain") &&
+          !trimmed.includes("SameSite") &&
+          !trimmed.includes("Secure")
+        ) {
+          cookies.push(trimmed);
+        }
+      }
+      cookieHeader = cookies.join("; ");
+    }
+
+    await axios.delete(`https://api.d-id.com/talks/streams/${streamId}`, {
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/json",
+        ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+      },
+    });
+
+    console.log("✅ D-ID stream deleted:", streamId);
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error(
+      "❌ D-ID Stream delete ERROR:",
+      error.response?.data || error.message,
+    );
+    return NextResponse.json(
+      {
+        error: "Failed to delete stream",
+        details: error.response?.data?.error || error.message,
+      },
+      { status: error.response?.status || 500 },
     );
   }
 }
