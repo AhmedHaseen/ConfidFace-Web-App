@@ -10,7 +10,7 @@ function Header() {
         <Image src={"/logo.svg"} alt="logo" width={40} height={40} />
         <h1 className="text-base font-bold md:text-2xl">ConfidFace</h1>
       </div>
-      <Link href={"/dashboard"}>cd
+      <Link href={"/dashboard"}>
         <Button size={"lg"}>Get Started</Button>
       </Link>
     </nav>
