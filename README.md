@@ -1,4 +1,4 @@
-# ConfidFace 🎯
+# ConfidFace - AI Powered Mock Interview Platform
 
 > **Build Interview Confidence with AI-Powered Practice Sessions**
 
